@@ -1,0 +1,236 @@
+---
+title: "A Homework of Biblical Proportions"
+author: "Chung-Ting Yang"
+output: html_document
+---
+
+In this HW, we will analyze the text of the bible. The ascii version resides in the file "ascii_bible.txt" on Camino. Use an editor to familiarize yourself with the structure of the file. Then perform the following operations, listed below as questions for you to answer. 
+
+## Q1: Read in the file using any R function you like and store each verse in a text array. After which print the top 20 verses. (Remove the top two lines which contain the title.)
+
+```{r}
+
+rm(list=ls())
+library(stringr)
+answer1 = "ascii_bible.txt"
+answer1 = readChar(answer1, file.info(answer1)$size)
+answer1 = unlist(strsplit(answer1, "\n\n"))
+answer1 = gsub("\n", "", answer1)
+answer1 = str_replace(gsub("\\s+", " ", str_trim(answer1)), "B", "b")
+answer1 = answer1[3:(length(answer1))]
+answer1[1:20]
+
+```
+
+## Q2: How many verses are there in total? 
+
+```{r}
+
+answer2 = length(answer1) 
+answer2
+
+```
+
+## Q3: Each verse has the number "CCC:VVV" where CCC is the chapter number and VVV is the verse number. How many chapters are there? 
+
+#### 150
+```{r}
+verse = list()
+Number  = c() 
+
+for(i in 1:length(answer1)){
+ verse = c(verse,strsplit(answer1[i], " "))
+ Number = c(Number, verse[[i]][1])
+}
+
+answer3 = unique(str_sub(Number,1,3))
+answer3
+
+
+
+```
+
+
+## Q4: Extract an array for the verse numbers, and also one for the verse text.
+
+```{r}
+
+answer4 = strsplit(answer1, " ")
+
+number_array = c()
+text_array =  c()  
+
+for (x in 1:length(answer4)){
+  text_array = c(text_array, paste(answer4[[x]][-1], sep = " ",collapse=" "))
+  number_array = c(number_array, answer4[[x]][1])
+}
+
+head(number_array)
+head(text_array)
+
+
+```
+
+## Q5: Lower case all text.
+
+```{r}
+
+answer5 = tolower(text_array)
+head(answer5)
+
+```
+
+## Q6: Convert the text of all verses into a Corpus using the **tm** package. 
+
+```{r}
+
+library(tm)
+answer6 =  VectorSource(answer5)
+answer6 = Corpus(answer6)
+
+head(answer6$content)
+
+```
+
+## Q7: Remove all punctuation. Use a corpus function for this. How many unique words are there in the bible? 
+
+```{r}
+
+Pun = tm_map(answer6, removePunctuation)
+word = (c(strsplit(Pun$content, " ")))
+
+answer7 = c()
+for (x in 1:length(word)){
+  answer7 = c(answer7, word[[x]])
+}
+
+answer7 = length(unique(answer7))
+answer7
+
+
+```
+
+## Q8: Remove all stopwords. Now how many unique terms are there? 
+
+```{r}
+
+stopword = tm_map(Pun, removeWords, stopwords("en"))
+word2 = (c(strsplit(stopword$content, " ")))
+
+answer8 = c()
+for (x in 1:length(word2)){
+  answer8 = c(answer8, word2[[x]])
+}
+
+answer8 = length(unique(answer8))
+answer8
+
+```
+
+## Q9: Now stem the text, to remove multiplicity of similar words of the same root. 
+
+```{r}
+
+answer9 = tm_map(stopword, stemDocument)
+head(answer9$content)
+
+```
+
+## Q10: How many distinct words are there in the bible, after stemming?
+
+```{r}
+
+word3 = (c(strsplit(answer9$content, " ")))
+
+answer10 = c()
+for (x in 1:length(word3)){
+  answer10 = c(answer10, word3[[x]])
+}
+
+answer10 = length(unique(answer10))
+answer10
+
+
+```
+
+## Q11: Convert the TDM into a matrix and find the 50 most common words in the bible. 
+
+```{r}
+
+answer11 = TermDocumentMatrix(answer9)
+answer11 = as.matrix(answer11)
+
+sort(rowSums(answer11), decreasing = TRUE)[1:50]
+
+
+```
+
+## Q12: Make a wordcloud of the top 100 words in the bible. 
+
+```{r}
+library(wordcloud)
+
+Top100 = sort(rowSums(answer11), decreasing = TRUE)[1:100]
+
+answer12 = data.frame(Top100, term = names(Top100),num = Top100)
+wordcloud(answer12$term, answer12$num, max.words = 100, colors = "pink2")
+
+
+
+```
+
+## Q13: Mood score the original text of the bible (before stemming)
+
+```{r}
+
+library(ngram)
+library(NLP)
+library(syuzhet)
+
+answer13 = get_tokens(stopword$content)
+answer13 = get_sentiment(answer13)
+sum(answer13)
+
+```
+
+## Q14: Summarize the bible into less than 500 verses. (Or some fraction of the total number of verses, it's your choice.) Be super careful here as this may take a long time unless you are clever about it, or find some elegant way to speed things up!
+
+```{r}
+
+library(lsa)
+
+TF_IDF = as.matrix(weightTfIdf(TermDocumentMatrix(stopword)))
+Mean = rowMeans(TF_IDF)
+
+Score = c()
+for(x in 1:ncol(TF_IDF)){
+ Score = c(Score, cosine(Mean, TF_IDF[,x]))
+}
+
+index = which(Score %in% sort(Score, decreasing = TRUE)[1:500])
+
+answer14 = answer9$content[index]
+answer14
+
+
+```
+
+## Q15: Find the main 3 topics in the bible, and the top 25 words in each topic. Can you find an interpretation of each topic?
+
+```{r}
+
+library(text2vec)
+
+tokens = answer9$content %>% tolower %>% word_tokenizer
+it = itoken(tokens, ids = c(1:length(answer9$content)), progressbar = FALSE)
+v = create_vocabulary(it) %>% prune_vocabulary(term_count_min = 10, doc_proportion_max = 0.2)
+vectorizer = vocab_vectorizer(v)
+dtm = create_dtm(it, vectorizer, type = "dgTMatrix")
+
+lda_model = LDA$new(n_topics = 3, doc_topic_prior = 0.1, topic_word_prior = 0.01)
+doc_topic_distr = lda_model$fit_transform(x = dtm, n_iter = 1000, convergence_tol = 0.001, n_check_convergence = 25, progressbar = FALSE)
+
+lda_model$get_top_words(n = 25, topic_number = c(1L, 2L, 3L), lambda = 1)
+
+
+```
